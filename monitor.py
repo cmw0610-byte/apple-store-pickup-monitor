@@ -53,19 +53,27 @@ def _load_env():
 
 _load_env()
 
-# iPhone 17 256GB India part numbers (all colours)
+# iPhone 18 256GB HK part numbers (all colours)
 PARTS = {
-    "MG6J4HN/A": "Black",
-    "MG6K4HN/A": "White",
-    "MG6M4HN/A": "Lavender",
-    "MG6N4HN/A": "Sage",
-    "MG6Q4HN/A": "Mist Blue",
+# 256GB 全四色
+    "MJXN4ZA/A": "iPhone 18 Pro Max 256GB (顏色 1)",
+    "MJXP4ZA/A": "iPhone 18 Pro Max 256GB (顏色 2)",
+    "MJXQ4ZA/A": "iPhone 18 Pro Max 256GB (顏色 3)",
+    "MJXR4ZA/A": "iPhone 18 Pro Max 256GB (顏色 4)",
+
+    # 512GB 全四色
+    "MJXT4ZA/A": "iPhone 18 Pro Max 512GB (顏色 1)",
+    "MJXU4ZA/A": "iPhone 18 Pro Max 512GB (顏色 2)",
+    "MJXV4ZA/A": "iPhone 18 Pro Max 512GB (顏色 3)",
+    "MJXW4ZA/A": "iPhone 18 Pro Max 512GB (顏色 4)",
 }
 STORES = {
-    "R744": "Apple BKC",
-    "R757": "Apple Borivali",
-    "R756": "Apple Saket",
-    "R778": "Apple Hebbal",
+    "R409": "IFC Mall",
+    "R485": "Causeway Bay",
+    "R499": "Canton Road",
+    "R610": "Festival Walk",
+    "R673": "New Town Plaza",
+    "R712": "apm",
 }
 COOKIE = "as_sfa=Mnxpbnxpbnx8ZW5fSU58Y29uc3VtZXJ8aW50ZXJuZXR8MHwwfDE"
 
@@ -86,7 +94,7 @@ HEARTBEAT = os.environ.get("HEARTBEAT", "0") == "1"
 DISABLE_DB = os.environ.get("DISABLE_DB", "0") == "1"
 RETRIES = max(1, int(os.environ.get("FETCH_RETRIES", "3")))
 BACKOFF = float(os.environ.get("FETCH_BACKOFF", "2.0"))
-BUY_URL = "https://www.apple.com/in/shop/buy-iphone/iphone-17"
+BUY_URL = "https://www.apple.com/hk-zh/shop/buy-iphone/iphone-18-pro"
 
 # DB is optional: if it can't be imported/opened, we degrade to plain stateless
 # behaviour rather than crash.
@@ -222,7 +230,7 @@ def main():
     # 1) Real stock -> always alert (any mode). No cooldown: every run pings.
     if available:
         send_telegram(
-            "\U0001F389 iPhone 17 256GB pickup AVAILABLE now: "
+            "\U0001F389 iPhone 18 pickup AVAILABLE now: "
             + "; ".join(available)
             + f".\nReserve/buy: {BUY_URL} → choose 'Pick up' and pick the store.\n"
             + f"(checked {now})"

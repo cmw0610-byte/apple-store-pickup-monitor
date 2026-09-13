@@ -22,16 +22,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Pickup Monitor (Sub-minute Continuous Checking)
+      - name: Run Pickup Monitor
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPO: ${{ github.repository }}
         run: |
-          python monitor.py
-          sleep 60
-          python monitor.py
-          sleep 60
           python monitor.py
           python export_json.py || true

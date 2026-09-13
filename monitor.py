@@ -36,6 +36,8 @@ PARTS = {
     "MJXU4ZA/A": "iPhone 18 Pro Max 512GB (顏色 2)",
     "MJXV4ZA/A": "iPhone 18 Pro Max 512GB (顏色 3)",
     "MJXW4ZA/A": "iPhone 18 Pro Max 512GB (顏色 4)",
+
+    "MU783ZA/A": "【測試】Apple 60W USB-C 充電線",
 }
 
 STORES = {

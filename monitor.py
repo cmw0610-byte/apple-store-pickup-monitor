@@ -22,18 +22,20 @@ def _load_env():
 _load_env()
 
 PARTS = {
-# 🧪 測試用型號 (iPhone 16 Pro Max 256GB 沙漠鈦金屬)
+# 🧪 測試用型號 (iPhone 16 Pro Max 256GB)
     "MYEY3ZA/A": "iPhone 16 Pro Max 256GB (測試用)",
 
-    # 🎯 iPhone 18 Pro Max
+    # 🎯 iPhone 18 Pro Max 256GB
     "MJXN4ZA/A": "iPhone 18 Pro Max 256GB (顏色 1)",
     "MJXP4ZA/A": "iPhone 18 Pro Max 256GB (顏色 2)",
     "MJXQ4ZA/A": "iPhone 18 Pro Max 256GB (顏色 3)",
     "MJXR4ZA/A": "iPhone 18 Pro Max 256GB (顏色 4)",
+    
+    # 🎯 iPhone 18 Pro Max 512GB
     "MJXT4ZA/A": "iPhone 18 Pro Max 512GB (顏色 1)",
     "MJXU4ZA/A": "iPhone 18 Pro Max 512GB (顏色 2)",
     "MJXV4ZA/A": "iPhone 18 Pro Max 512GB (顏色 3)",
-    "MJXW4ZA/A": "MJXW4ZA/A": "iPhone 18 Pro Max 512GB (顏色 4)",
+    "MJXW4ZA/A": "iPhone 18 Pro Max 512GB (顏色 4)",
 }
 
 STORES = {

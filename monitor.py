@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
-"""Check Apple Hong Kong in-store PICKUP availability for iPhone 18 Pro Max
-at HK Apple Stores (High-Speed Multi-threaded Version).
+"""Ultra-Fast Apple Hong Kong Store Pickup Monitor for iPhone 18 Pro Max
+Uses single-batch API endpoint for near-instant execution (<5s).
 """
 import datetime
 import json
 import os
-import time
 import urllib.parse
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def _load_env():
     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-    if not os.path.exists(env_path):
-        env_path = ".env"
     if os.path.exists(env_path):
         with open(env_path, "r", encoding="utf-8") as f:
             for line in f:
@@ -24,235 +20,123 @@ def _load_env():
 
 _load_env()
 
+# iPhone 18 Pro Max 港版 8 款型號
 PARTS = {
-    # 256GB 全四色
+    # 256GB
     "MJXN4ZA/A": "iPhone 18 Pro Max 256GB (顏色 1)",
     "MJXP4ZA/A": "iPhone 18 Pro Max 256GB (顏色 2)",
     "MJXQ4ZA/A": "iPhone 18 Pro Max 256GB (顏色 3)",
     "MJXR4ZA/A": "iPhone 18 Pro Max 256GB (顏色 4)",
-
-    # 512GB 全四色
+    # 512GB
     "MJXT4ZA/A": "iPhone 18 Pro Max 512GB (顏色 1)",
     "MJXU4ZA/A": "iPhone 18 Pro Max 512GB (顏色 2)",
     "MJXV4ZA/A": "iPhone 18 Pro Max 512GB (顏色 3)",
     "MJXW4ZA/A": "iPhone 18 Pro Max 512GB (顏色 4)",
-
+    # 測試用現貨產品（確認 Telegram 正常後可刪除此行）
     "MU783ZA/A": "【測試】Apple 60W USB-C 充電線",
 }
 
 STORES = {
-    "R409": "IFC Mall",
-    "R485": "Causeway Bay",
-    "R499": "Canton Road",
-    "R610": "Festival Walk",
-    "R673": "New Town Plaza",
-    "R712": "apm",
+    "R409": "IFC Mall 中環",
+    "R485": "Causeway Bay 銅鑼灣",
+    "R499": "Canton Road 尖沙咀",
+    "R610": "Festival Walk 九龍塘",
+    "R673": "New Town Plaza 沙田",
+    "R712": "apm 觀塘",
 }
-
-COOKIE = "as_sfa=Mnxoa3xoa3x8emhfSEt8Y29uc3VtZXJ8aW50ZXJuZXR8MHwwfDE"
-
-USER_AGENTS = [
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1",
-]
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
-
-HEARTBEAT = os.environ.get("HEARTBEAT", "0") == "1"
-DISABLE_DB = os.environ.get("DISABLE_DB", "0") == "1"
-RETRIES = max(1, int(os.environ.get("FETCH_RETRIES", "2")))
-BACKOFF = float(os.environ.get("FETCH_BACKOFF", "1.0"))
 BUY_URL = "https://www.apple.com/hk-zh/shop/buy-iphone/iphone-18-pro"
 
-db = None
-if not DISABLE_DB:
-    try:
-        import db as _db
-        _db.init_db()
-        db = _db
-    except Exception as e:
-        print(f"[warn] history disabled (db unavailable): {e}")
-
-
-def _fetch_urllib(url, ua):
-    headers = {
-        "User-Agent": ua,
-        "Cookie": COOKIE,
-        "Accept-Language": "zh-HK,zh-TW;q=0.9,zh;q=0.8,en-US;q=0.7,en;q=0.6",
-        "Referer": "https://www.apple.com/hk-zh/shop/buy-iphone/iphone-18-pro"
-    }
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=10) as r:
-        return json.loads(r.read().decode())
-
-
-def _fetch_cloudscraper(url, ua):
-    import cloudscraper
-    scraper = cloudscraper.create_scraper()
-    headers = {
-        "User-Agent": ua,
-        "Cookie": COOKIE,
-        "Accept-Language": "zh-HK,zh-TW;q=0.9,zh;q=0.8,en-US;q=0.7,en;q=0.6",
-        "Referer": "https://www.apple.com/hk-zh/shop/buy-iphone/iphone-18-pro"
-    }
-    resp = scraper.get(url, headers=headers, timeout=10)
-    resp.raise_for_status()
-    return resp.json()
-
-
-def fetch(url):
-    last_err = None
-    for attempt in range(RETRIES):
-        ua = USER_AGENTS[attempt % len(USER_AGENTS)]
-        try:
-            return _fetch_urllib(url, ua)
-        except Exception as e:
-            last_err = e
-            if attempt < RETRIES - 1:
-                time.sleep(BACKOFF)
-    try:
-        return _fetch_cloudscraper(url, USER_AGENTS[0])
-    except Exception as e:
-        last_err = e
-    raise last_err
-
-
-def fetch_single_part(sid, part, colour_name):
-    """抓取單一門市 + 單一型號的獨立任務"""
-    url = f"https://www.apple.com/hk-zh/shop/buyability-message?parts.0={urllib.parse.quote(part, safe='')}&store={sid}"
-    try:
-        data = fetch(url)
-        apu = data["body"]["content"]["buyabilityMessage"]["apu"]
-        is_buyable = bool(apu.get(part, {}).get("isBuyable") is True)
-        return part, colour_name, is_buyable, True
-    except Exception:
-        return part, colour_name, False, False
-
-
-def check_store_parallel(sid):
-    """使用多執行緒同時查詢該門市的所有型號"""
-    verified = {}
-    ready = []
-    unverified_count = 0
-
-    # 開啟 8 個 Thread 同時發起請求
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [
-            executor.submit(fetch_single_part, sid, part, colour_name)
-            for part, colour_name in PARTS.items()
-        ]
-        for future in as_completed(futures):
-            part, colour_name, is_buyable, success = future.result()
-            if success:
-                verified[part] = is_buyable
-                if is_buyable:
-                    ready.append(colour_name)
-            else:
-                unverified_count += 1
-
-    if unverified_count == len(PARTS):
-        return _finish(sid, "unverified", "fetch failed for all parts after retries", None)
-
-    if ready:
-        return _finish(sid, "available", ready, verified)
-
-    return _finish(sid, "nostock", f"{len(verified)}/{len(PARTS)} colours confirmed, none buyable", verified)
-
-
-def _finish(sid, state, detail, verified):
-    if db is not None:
-        try:
-            db.record_check(sid, STORES[sid], state, detail)
-            if verified:
-                for part, buyable in verified.items():
-                    db.record_colour(sid, STORES[sid], part, PARTS[part], buyable)
-        except Exception as e:
-            print(f"[warn] failed to log history for {sid}: {e}")
-    return state, detail
-
-
 def send_telegram(text):
-    chat_str = os.environ.get("TELEGRAM_CHAT_ID", CHAT_ID)
-    if not TOKEN or not chat_str:
-        return
-    chat_ids = [c.strip() for c in chat_str.replace(";", ",").split(",") if c.strip()]
+    if not TOKEN or not CHAT_ID:
+        print("[Error] TELEGRAM_TOKEN or TELEGRAM_CHAT_ID is missing!")
+        return False
+    
+    chat_ids = [c.strip() for c in CHAT_ID.replace(";", ",").split(",") if c.strip()]
+    success = True
     for cid in chat_ids:
         data = urllib.parse.urlencode({"chat_id": cid, "text": text}).encode()
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         try:
             req = urllib.request.Request(url, data=data)
             with urllib.request.urlopen(req, timeout=10) as r:
-                print(f"Telegram ({cid}):", r.read().decode()[:200])
+                res = json.loads(r.read().decode())
+                if not res.get("ok"):
+                    print(f"[warn] Telegram API error for {cid}: {res}")
+                    success = False
         except Exception as e:
-            print(f"[warn] Telegram send to {cid} failed: {e}")
-
+            print(f"[warn] Telegram send failed for {cid}: {e}")
+            success = False
+    return success
 
 def hkt_now():
     hkt = datetime.timezone(datetime.timedelta(hours=8))
     return datetime.datetime.now(hkt).strftime("%d %b %Y, %I:%M %p HKT")
 
+def check_pickup():
+    # 建立批次 API 網址：一次過查詢所有 Parts 與香港門市
+    part_params = "&".join([f"parts.{i}={p}" for i, p in enumerate(PARTS.keys())])
+    url = f"https://www.apple.com/hk-zh/shop/fulfillment-messages?pl=true&{part_params}&location=Hong%20Kong"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "Accept-Language": "zh-HK,zh-TW;q=0.9,zh;q=0.8,en-US;q=0.7,en;q=0.6",
+        "Referer": "https://www.apple.com/hk-zh/shop/buy-iphone/iphone-18-pro"
+    }
 
-def main():
-    # 全局門市平行監控：6 間門市同時並行檢查
-    results = {}
-    with ThreadPoolExecutor(max_workers=6) as executor:
-        future_to_sid = {executor.submit(check_store_parallel, sid): sid for sid in STORES}
-        for future in as_completed(future_to_sid):
-            sid = future_to_sid[future]
-            try:
-                results[sid] = future.result()
-            except Exception as e:
-                results[sid] = ("unverified", f"exception: {e}")
-
-    now = hkt_now()
-
-    for sid in STORES:
-        state, detail = results.get(sid, ("unverified", "unknown"))
-        print(f"{STORES[sid]}: {state} — {detail}")
-
-    available = [
-        f"{c} @ {STORES[sid]}"
-        for sid, (state, detail) in results.items()
-        if state == "available"
-        for c in detail
-    ]
-    unverified = [STORES[sid] for sid, (state, _) in results.items() if state == "unverified"]
-
-    if available:
-        send_telegram(
-            "🎉 iPhone 18 Pro Max pickup AVAILABLE now: "
-            + "; ".join(available)
-            + f".\nReserve/buy: {BUY_URL} → choose 'Pick up' and pick the store.\n"
-            + f"(checked {now})"
-        )
+    print(f"[{hkt_now()}] Fetching batch data from Apple HK...")
+    
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as response:
+            data = json.loads(response.read().decode())
+    except Exception as e:
+        print(f"[Error] Failed to fetch Apple API: {e}")
+        send_telegram(f"⚠️ Monitor Error: Unable to fetch Apple HK API ({e}).")
         return
 
-    if len(unverified) == len(STORES) and not HEARTBEAT:
-        send_telegram(
-            "⚠️ Monitor could NOT verify pickup status this run "
-            f"({', '.join(unverified)}). Apple API may have changed or is blocking. "
-            f"Will keep trying. ({now})"
-        )
-        return
+    stores_data = data.get("body", {}).get("content", {}).get("pickupMessage", {}).get("stores", [])
+    
+    available_items = []
 
-    if HEARTBEAT:
-        lines = []
-        for sid in STORES:
-            state, detail = results.get(sid, ("unverified", "unknown"))
-            if state == "nostock":
-                lines.append(f"• {STORES[sid]}: no pickup stock (verified live ✓)")
-            elif state == "unverified":
-                lines.append(f"• {STORES[sid]}: ⚠️ could not verify — {detail}")
-            elif state == "available":
-                lines.append(f"• {STORES[sid]}: ✅ AVAILABLE — {', '.join(detail)}")
-        send_telegram(
-            "✅ Monitor is running. Live check just now:\n"
-            + "\n".join(lines)
-            + f"\nLast checked: {now}"
-        )
+    for store in stores_data:
+        store_number = store.get("storeNumber")
+        if store_number not in STORES:
+            continue
+        
+        store_name = STORES[store_number]
+        parts_availability = store.get("partsAvailability", {})
 
+        for part_code, part_info in parts_availability.items():
+            if part_code in PARTS:
+                pickup_display = part_info.get("pickupDisplay")
+                # 當 pickupDisplay 為 'available' 代表該門市有現貨可取
+                if pickup_display == "available":
+                    item_name = PARTS[part_code]
+                    available_items.append(f"• {item_name} @ {store_name}")
+                    print(f"[AVAILABLE] {item_name} -> {store_name}")
+
+    now_str = hkt_now()
+    if available_items:
+        msg = (
+            f"🎉 **iPhone 18 Pro Max Pickup 現貨開放通知**\n\n"
+            + "\n".join(available_items)
+            + f"\n\n立即預約/購買: {BUY_URL}\n"
+            + f"檢查時間: {now_str}"
+        )
+        print("Stock found! Sending Telegram notification...")
+        send_telegram(msg)
+    else:
+        print("No stock available across all HK stores.")
+        # 取消註解下面這行可發送測試 Heartbeat 訊息：
+        # send_telegram(f"✅ Monitor active. Checked 6 HK stores at {now_str} - No stock.")
 
 if __name__ == "__main__":
-    main()
+    print("Sending startup Telegram connectivity check...")
+    test_sent = send_telegram("🤖 Apple Store Pickup 監控程式啟動測試。如收到此訊息表示 Telegram 設定完全正常！")
+    if not test_sent:
+        print("⚠️ Warning: Initial Telegram test message failed to send. Check Secrets!")
+    
+    check_pickup()

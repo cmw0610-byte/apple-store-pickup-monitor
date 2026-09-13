@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Ultra-Fast & Akamai-Bypassing Apple HK Pickup Monitor
-Uses system curl to bypass HTTP 541 Akamai block on GitHub Actions.
+"""Apple HK Store Pickup Monitor for iPhone 18 Pro Max
+Includes MG2M4ZA/A for live Telegram testing.
 """
 import datetime
 import json
@@ -22,18 +22,20 @@ def _load_env():
 _load_env()
 
 PARTS = {
-    # 256GB
+    # 🧪 測試用型號（確認 Telegram 通知運作）
+    "MG2M4ZA/A": "【測試型號】iPhone MG2M4ZA/A",
+
+    # 🎯 iPhone 18 Pro Max 256GB
     "MJXN4ZA/A": "iPhone 18 Pro Max 256GB (顏色 1)",
     "MJXP4ZA/A": "iPhone 18 Pro Max 256GB (顏色 2)",
     "MJXQ4ZA/A": "iPhone 18 Pro Max 256GB (顏色 3)",
     "MJXR4ZA/A": "iPhone 18 Pro Max 256GB (顏色 4)",
-    # 512GB
+    
+    # 🎯 iPhone 18 Pro Max 512GB
     "MJXT4ZA/A": "iPhone 18 Pro Max 512GB (顏色 1)",
     "MJXU4ZA/A": "iPhone 18 Pro Max 512GB (顏色 2)",
     "MJXV4ZA/A": "iPhone 18 Pro Max 512GB (顏色 3)",
     "MJXW4ZA/A": "iPhone 18 Pro Max 512GB (顏色 4)",
-    # 測試用現貨產品
-    "MU783ZA/A": "【測試】Apple 60W USB-C 充電線",
 }
 
 STORES = {
@@ -81,7 +83,6 @@ def check_pickup():
     
     print(f"[{hkt_now()}] Fetching batch data from Apple HK using curl...")
     
-    # 使用系統原生的 curl 繞過 Akamai TLS 指紋檢測
     curl_cmd = [
         "curl", "-s", "-L",
         "--compressed",
@@ -116,18 +117,19 @@ def check_pickup():
         for part_code, part_info in parts_availability.items():
             if part_code in PARTS:
                 pickup_display = part_info.get("pickupDisplay")
+                # 當門市顯示有現貨可取 (available)
                 if pickup_display == "available":
                     item_name = PARTS[part_code]
-                    available_items.append(f"• {item_name} @ {store_name}")
+                    available_items.append(f"📱 **{item_name}**\n📍 門市：{store_name}")
                     print(f"[AVAILABLE] {item_name} -> {store_name}")
 
     now_str = hkt_now()
     if available_items:
         msg = (
-            f"🎉 **Apple Store Pickup 現貨開放通知**\n\n"
-            + "\n".join(available_items)
-            + f"\n\n立即預約/購買: {BUY_URL}\n"
-            + f"檢查時間: {now_str}"
+            f"🎉 **Apple Store Pickup 現貨開放通知！**\n\n"
+            + "\n-------------------\n".join(available_items)
+            + f"\n\n🔗 立即預約/購買: {BUY_URL}\n"
+            + f"⏰ 檢查時間: {now_str}"
         )
         print("Stock found! Sending Telegram notification...")
         send_telegram(msg)
@@ -135,6 +137,4 @@ def check_pickup():
         print("No stock available across all HK stores.")
 
 if __name__ == "__main__":
-    print("Sending startup Telegram connectivity check...")
-    send_telegram("🤖 Apple Store Pickup 監控程式：連線與 Telegram 測試成功！")
     check_pickup()

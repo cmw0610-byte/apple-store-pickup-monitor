@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Check Apple Hong Kong in-store PICKUP availability for iPhone 18 Pro Max
-at HK Apple Stores, send a Telegram alert, and log to SQLite.
+at HK Apple Stores (High-Speed Multi-threaded Version).
 """
 import datetime
 import json
@@ -8,6 +8,7 @@ import os
 import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def _load_env():
     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
@@ -23,7 +24,6 @@ def _load_env():
 
 _load_env()
 
-# iPhone 18 Pro Max HK part numbers (all colours)
 PARTS = {
     # 256GB 全四色
     "MJXN4ZA/A": "iPhone 18 Pro Max 256GB (顏色 1)",
@@ -60,8 +60,8 @@ CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 HEARTBEAT = os.environ.get("HEARTBEAT", "0") == "1"
 DISABLE_DB = os.environ.get("DISABLE_DB", "0") == "1"
-RETRIES = max(1, int(os.environ.get("FETCH_RETRIES", "3")))
-BACKOFF = float(os.environ.get("FETCH_BACKOFF", "2.0"))
+RETRIES = max(1, int(os.environ.get("FETCH_RETRIES", "2")))
+BACKOFF = float(os.environ.get("FETCH_BACKOFF", "1.0"))
 BUY_URL = "https://www.apple.com/hk-zh/shop/buy-iphone/iphone-18-pro"
 
 db = None
@@ -82,7 +82,7 @@ def _fetch_urllib(url, ua):
         "Referer": "https://www.apple.com/hk-zh/shop/buy-iphone/iphone-18-pro"
     }
     req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with urllib.request.urlopen(req, timeout=10) as r:
         return json.loads(r.read().decode())
 
 
@@ -95,7 +95,7 @@ def _fetch_cloudscraper(url, ua):
         "Accept-Language": "zh-HK,zh-TW;q=0.9,zh;q=0.8,en-US;q=0.7,en;q=0.6",
         "Referer": "https://www.apple.com/hk-zh/shop/buy-iphone/iphone-18-pro"
     }
-    resp = scraper.get(url, headers=headers, timeout=30)
+    resp = scraper.get(url, headers=headers, timeout=10)
     resp.raise_for_status()
     return resp.json()
 
@@ -109,54 +109,46 @@ def fetch(url):
         except Exception as e:
             last_err = e
             if attempt < RETRIES - 1:
-                time.sleep(BACKOFF * (2 ** attempt))
+                time.sleep(BACKOFF)
     try:
         return _fetch_cloudscraper(url, USER_AGENTS[0])
-    except ImportError:
-        pass
     except Exception as e:
         last_err = e
     raise last_err
 
 
-def send_telegram(text):
-    chat_str = os.environ.get("TELEGRAM_CHAT_ID", CHAT_ID)
-    if not TOKEN or not chat_str:
-        return
-    chat_ids = [c.strip() for c in chat_str.replace(";", ",").split(",") if c.strip()]
-    for cid in chat_ids:
-        data = urllib.parse.urlencode({"chat_id": cid, "text": text}).encode()
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        try:
-            req = urllib.request.Request(url, data=data)
-            with urllib.request.urlopen(req, timeout=30) as r:
-                print(f"Telegram ({cid}):", r.read().decode()[:200])
-        except Exception as e:
-            print(f"[warn] Telegram send to {cid} failed: {e}")
+def fetch_single_part(sid, part, colour_name):
+    """抓取單一門市 + 單一型號的獨立任務"""
+    url = f"https://www.apple.com/hk-zh/shop/buyability-message?parts.0={urllib.parse.quote(part, safe='')}&store={sid}"
+    try:
+        data = fetch(url)
+        apu = data["body"]["content"]["buyabilityMessage"]["apu"]
+        is_buyable = bool(apu.get(part, {}).get("isBuyable") is True)
+        return part, colour_name, is_buyable, True
+    except Exception:
+        return part, colour_name, False, False
 
 
-def hkt_now():
-    hkt = datetime.timezone(datetime.timedelta(hours=8))
-    return datetime.datetime.now(hkt).strftime("%d %b %Y, %I:%M %p HKT")
-
-
-def check_store(sid, _query=None):
+def check_store_parallel(sid):
+    """使用多執行緒同時查詢該門市的所有型號"""
     verified = {}
     ready = []
     unverified_count = 0
 
-    for part, colour_name in PARTS.items():
-        # 指向香港地區的 buyability 接口
-        url = f"https://www.apple.com/hk-zh/shop/buyability-message?parts.0={urllib.parse.quote(part, safe='')}&store={sid}"
-        try:
-            data = fetch(url)
-            apu = data["body"]["content"]["buyabilityMessage"]["apu"]
-            is_buyable = bool(apu.get(part, {}).get("isBuyable") is True)
-            verified[part] = is_buyable
-            if is_buyable:
-                ready.append(colour_name)
-        except Exception:
-            unverified_count += 1
+    # 開啟 8 個 Thread 同時發起請求
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [
+            executor.submit(fetch_single_part, sid, part, colour_name)
+            for part, colour_name in PARTS.items()
+        ]
+        for future in as_completed(futures):
+            part, colour_name, is_buyable, success = future.result()
+            if success:
+                verified[part] = is_buyable
+                if is_buyable:
+                    ready.append(colour_name)
+            else:
+                unverified_count += 1
 
     if unverified_count == len(PARTS):
         return _finish(sid, "unverified", "fetch failed for all parts after retries", None)
@@ -179,11 +171,43 @@ def _finish(sid, state, detail, verified):
     return state, detail
 
 
+def send_telegram(text):
+    chat_str = os.environ.get("TELEGRAM_CHAT_ID", CHAT_ID)
+    if not TOKEN or not chat_str:
+        return
+    chat_ids = [c.strip() for c in chat_str.replace(";", ",").split(",") if c.strip()]
+    for cid in chat_ids:
+        data = urllib.parse.urlencode({"chat_id": cid, "text": text}).encode()
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        try:
+            req = urllib.request.Request(url, data=data)
+            with urllib.request.urlopen(req, timeout=10) as r:
+                print(f"Telegram ({cid}):", r.read().decode()[:200])
+        except Exception as e:
+            print(f"[warn] Telegram send to {cid} failed: {e}")
+
+
+def hkt_now():
+    hkt = datetime.timezone(datetime.timedelta(hours=8))
+    return datetime.datetime.now(hkt).strftime("%d %b %Y, %I:%M %p HKT")
+
+
 def main():
-    results = {sid: check_store(sid) for sid in STORES}
+    # 全局門市平行監控：6 間門市同時並行檢查
+    results = {}
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        future_to_sid = {executor.submit(check_store_parallel, sid): sid for sid in STORES}
+        for future in as_completed(future_to_sid):
+            sid = future_to_sid[future]
+            try:
+                results[sid] = future.result()
+            except Exception as e:
+                results[sid] = ("unverified", f"exception: {e}")
+
     now = hkt_now()
 
-    for sid, (state, detail) in results.items():
+    for sid in STORES:
+        state, detail = results.get(sid, ("unverified", "unknown"))
         print(f"{STORES[sid]}: {state} — {detail}")
 
     available = [
@@ -213,7 +237,8 @@ def main():
 
     if HEARTBEAT:
         lines = []
-        for sid, (state, detail) in results.items():
+        for sid in STORES:
+            state, detail = results.get(sid, ("unverified", "unknown"))
             if state == "nostock":
                 lines.append(f"• {STORES[sid]}: no pickup stock (verified live ✓)")
             elif state == "unverified":

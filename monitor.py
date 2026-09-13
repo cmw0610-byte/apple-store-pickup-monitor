@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Apple HK Store Pickup Monitor for iPhone 18 Pro Max & Test Models
-Resilient against invalid part numbers and empty API responses.
+"""Apple HK Store Pickup Monitor with Force Test Mode
 """
 import datetime
 import json
@@ -21,17 +20,15 @@ def _load_env():
 
 _load_env()
 
-PARTS = {
-# 🧪 測試用型號 (iPhone 16 Pro Max 256GB)
-    "MYEY3ZA/A": "iPhone 16 Pro Max 256GB (測試用)",
+# 🧪 強制測試模式：設為 True 會無視現貨狀態，100% 發送 Telegram 訊息驗證
+TEST_MODE = True
 
-    # 🎯 iPhone 18 Pro Max 256GB
+PARTS = {
+    # 🎯 iPhone 18 Pro Max
     "MJXN4ZA/A": "iPhone 18 Pro Max 256GB (顏色 1)",
     "MJXP4ZA/A": "iPhone 18 Pro Max 256GB (顏色 2)",
     "MJXQ4ZA/A": "iPhone 18 Pro Max 256GB (顏色 3)",
     "MJXR4ZA/A": "iPhone 18 Pro Max 256GB (顏色 4)",
-    
-    # 🎯 iPhone 18 Pro Max 512GB
     "MJXT4ZA/A": "iPhone 18 Pro Max 512GB (顏色 1)",
     "MJXU4ZA/A": "iPhone 18 Pro Max 512GB (顏色 2)",
     "MJXV4ZA/A": "iPhone 18 Pro Max 512GB (顏色 3)",
@@ -81,6 +78,10 @@ def check_pickup():
     available_items = []
     print(f"[{hkt_now()}] Monitoring Apple HK stores pickup availability...")
 
+    if TEST_MODE:
+        print("[TEST_MODE ENABLED] Forcing test notification...")
+        available_items.append("📱 **iPhone 18 Pro Max 256GB (測試通報)**\n📍 門市：IFC Mall 中環\n📦 狀態：可供取貨：明天")
+
     for part_code, part_name in PARTS.items():
         url = f"https://www.apple.com/hk-zh/shop/fulfillment-messages?pl=true&parts.0={part_code}&location=Hong%20Kong"
         
@@ -114,14 +115,12 @@ def check_pickup():
                 pickup_display = part_info.get("pickupDisplay", "")
                 pickup_search_quote = part_info.get("pickupSearchQuote", "")
                 
-                # 判斷門市是否有現貨或開放未來日期預約
                 if pickup_display not in ["unavailable", "ineligible", ""] or "可供取貨" in pickup_search_quote or "available" in pickup_display:
                     status_text = pickup_search_quote if pickup_search_quote else "有現貨/開放預約"
                     available_items.append(f"📱 **{part_name}** ({part_code})\n📍 門市：{store_name}\n📦 狀態：{status_text}")
                     print(f"[FOUND] {part_name} -> {store_name} ({status_text})")
 
         except Exception:
-            # 型號無效或 Apple 端未開放時自動跳過，不影響整個程式
             continue
 
     now_str = hkt_now()
@@ -132,7 +131,7 @@ def check_pickup():
             + f"\n\n🔗 立即預約/購買: {BUY_URL}\n"
             + f"⏰ 檢查時間: {now_str}"
         )
-        print("Stock found! Sending Telegram notification...")
+        print("Sending Telegram notification...")
         send_telegram(msg)
     else:
         print("No stock or pickup availability found for valid items.")

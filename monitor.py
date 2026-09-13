@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Diagnostic Apple HK Pickup Monitor
-Prints raw API response to pinpoint exact key/value structure.
+Fixed indentation issue to directly print store API payload to Telegram.
 """
 import datetime
 import json
@@ -85,5 +85,30 @@ def check_pickup():
         stores_data = data.get("body", {}).get("content", {}).get("pickupMessage", {}).get("stores", [])
 
         debug_lines = []
-
         for store in stores_data:
+            store_number = store.get("storeNumber")
+            store_name = STORES.get(store_number, store_number)
+            parts_availability = store.get("partsAvailability", {})
+            part_info = parts_availability.get(part_code, {})
+
+            pickup_display = part_info.get("pickupDisplay")
+            pickup_quote = part_info.get("pickupSearchQuote")
+            store_pick_eligible = part_info.get("storeSelectionEnabled")
+
+            info_str = f"• {store_name}:\n  display='{pickup_display}'\n  quote='{pickup_quote}'\n  eligible={store_pick_eligible}"
+            print(info_str)
+            debug_lines.append(info_str)
+
+        if debug_lines:
+            report = f"🔍 **Apple API 門市狀態診斷報告 ({part_code})**\n\n" + "\n\n".join(debug_lines) + f"\n\n⏰ {hkt_now()}"
+            send_telegram(report)
+        else:
+            send_telegram("⚠️ 診斷警告：API 未回傳任何門市資料，請檢查 API 網址！")
+
+    except Exception as e:
+        err_msg = f"[Error] API fetch failed: {e}"
+        print(err_msg)
+        send_telegram(f"❌ 診斷失敗: {e}")
+
+if __name__ == "__main__":
+    check_pickup()

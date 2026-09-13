@@ -21,7 +21,7 @@ def _load_env():
 _load_env()
 
 # 🧪 強制測試模式：設為 True 會無視現貨狀態，100% 發送 Telegram 訊息驗證
-TEST_MODE = True
+TEST_MODE = False
 
 PARTS = {
     # 🎯 iPhone 18 Pro Max

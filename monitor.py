@@ -22,7 +22,10 @@ def _load_env():
 _load_env()
 
 PARTS = {
-    # 🎯 iPhone 18 Pro Max 型號清單（請確保輸入正確的官方 Part Number）
+# 🧪 測試用型號 (iPhone 16 Pro Max 256GB 沙漠鈦金屬)
+    "MYEY3ZA/A": "iPhone 16 Pro Max 256GB (測試用)",
+
+    # 🎯 iPhone 18 Pro Max
     "MJXN4ZA/A": "iPhone 18 Pro Max 256GB (顏色 1)",
     "MJXP4ZA/A": "iPhone 18 Pro Max 256GB (顏色 2)",
     "MJXQ4ZA/A": "iPhone 18 Pro Max 256GB (顏色 3)",
@@ -30,7 +33,7 @@ PARTS = {
     "MJXT4ZA/A": "iPhone 18 Pro Max 512GB (顏色 1)",
     "MJXU4ZA/A": "iPhone 18 Pro Max 512GB (顏色 2)",
     "MJXV4ZA/A": "iPhone 18 Pro Max 512GB (顏色 3)",
-    "MJXW4ZA/A": "iPhone 18 Pro Max 512GB (顏色 4)",
+    "MJXW4ZA/A": "MJXW4ZA/A": "iPhone 18 Pro Max 512GB (顏色 4)",
 }
 
 STORES = {
